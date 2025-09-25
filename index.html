@@ -104,93 +104,103 @@
       const expressionEl = document.getElementById('expression');
       const memEl = document.getElementById('mem');
 
-      let expression = '';
-      let current = '0';
+      let expression = ''; // expression built so far, e.g. "2+3*"
+      let current = '';    // current number being typed, e.g. "4.5"
       let memory = 0;
       let lastWasEquals = false;
 
       function render(){
         expressionEl.textContent = expression;
-        display.textContent = current;
+        display.textContent = (current === '' ? '0' : current);
         memEl.textContent = memory !== 0 ? 'M' : '';
       }
 
       function inputNumber(n){
-        if(lastWasEquals){ expression = ''; lastWasEquals = false; }
-        if(current === '0' || /[+\-*/]$/.test(expression)){
-          current = n;
-        } else {
-          current = current + n;
-        }
-        // if expression ends with operator, keep it but not duplicated
-        if(expression === '' || !/[+\-*/]$/.test(expression)){
-          // nothing
-        }
+        if(lastWasEquals){ expression = ''; lastWasEquals = false; current = n; render(); return; }
+        // avoid leading zeros like "00"
+        if(current === '0') current = n;
+        else current = current + n;
         render();
       }
 
       function inputDecimal(){
-        if(lastWasEquals){ expression = ''; lastWasEquals = false; current = '0'; }
-        if(!current.includes('.')) current = current + '.';
+        if(lastWasEquals){ expression = ''; lastWasEquals = false; current = '0.'; render(); return; }
+        if(current === '') current = '0.';
+        else if(!current.includes('.')) current += '.';
         render();
       }
 
       function applyOperator(op){
-        if(lastWasEquals) lastWasEquals = false; // continue calculation
-        // if expression ends with operator, replace
-        if(expression === '' && current === '0') return; // nothing
-        if(/[+\-*/]$/.test(expression)){
-          expression = expression.slice(0,-1) + op;
-        } else {
-          expression = expression + (expression === '' ? current : current) + op;
+        lastWasEquals = false;
+        if(expression === '' && current === ''){
+          // nothing to apply
+          return;
         }
-        current = '0';
+        if(/[+\-*/]$/.test(expression)){
+          // expression currently ends with an operator
+          if(current !== ''){
+            // append the typed number then replace operator
+            expression = expression + current + op;
+          } else {
+            // just replace operator
+            expression = expression.slice(0,-1) + op;
+          }
+        } else {
+          // append current (if any) then operator
+          expression = expression + (current === '' ? '' : current) + op;
+        }
+        current = '';
         render();
       }
 
-      function clearAll(){ expression = ''; current = '0'; lastWasEquals = false; render(); }
+      function clearAll(){ expression = ''; current = ''; lastWasEquals = false; render(); }
+
       function backspace(){
         if(lastWasEquals){ clearAll(); return; }
-        if(current.length > 1){ current = current.slice(0,-1); }
-        else current = '0';
+        if(current.length > 0){ current = current.slice(0,-1); }
+        else if(expression.length > 0){
+          if(/[+\-*/]$/.test(expression)) expression = expression.slice(0,-1);
+          else expression = expression.replace(/\d+(?:\.\d+)?$|\)$/,'');
+        }
         render();
       }
 
       function negate(){
-        if(current === '0') return;
+        if(current === '') current = '0';
         if(current.startsWith('-')) current = current.slice(1);
         else current = '-' + current;
         render();
       }
 
       function percent(){
-        // percentage of current number
         let num = parseFloat(current || '0');
-        num = num/100;
-        current = (''+num);
+        num = num / 100;
+        current = String(num);
         render();
       }
 
       function safeEval(expr){
-        // replace unicode operators
         expr = expr.replace(/×/g,'*').replace(/÷/g,'/');
-        // remove accidental multiple operators except '-' for negative numbers
-        // allow only digits, operators, parentheses, dot and spaces
         if(!/^[0-9+\-*/().\s]+$/.test(expr)) throw new Error('Invalid characters');
-        // basic evaluation using Function to avoid eval name
-        // protect against sequences like '2**3' (allowed in JS but okay) and accidental trailing operator
         expr = expr.replace(/\s+/g,'');
-        expr = expr.replace(/[+\-*/]+$/,'');
+        expr = expr.replace(/[+\-*/]+$/,''); // strip trailing operator if any
         return Function('return ('+expr+')')();
       }
 
       function equals(){
         try{
-          // finalize expression
-          let full = expression;
-          if(!/[+\-*/]$/.test(full)){
-            full = full + current;
+          let full = '';
+          if(expression === '' && current === ''){
+            full = '0';
+          } else if(expression === ''){
+            full = current;
+          } else if(/[+\-*/]$/.test(expression)){
+            if(current !== '') full = expression + current;
+            else full = expression.slice(0,-1); // strip trailing operator
+          } else {
+            full = expression + (current === '' ? '' : current);
           }
+
           const result = safeEval(full);
           current = String(result);
           expression = '';
